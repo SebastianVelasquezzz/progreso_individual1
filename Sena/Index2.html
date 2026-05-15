@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SYSTEC CORE - EVOLUTION</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@v4.2.2/dist/aframe-physics-system.min.js"></script>
+    
+    <style>
+        body { margin: 0; font-family: 'Courier New', monospace; background: #000; overflow: hidden; touch-action: none; }
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, #0a1a2e 0%, #000 100%);
+            z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: #00ffcc; text-align: center; border: 8px double #00ffcc; box-sizing: border-box;
+        }
+        .terminal-box {
+            background: rgba(0, 20, 40, 0.95); padding: 50px;
+            border: 2px solid #00ffcc; box-shadow: 0 0 40px #00ffcc; border-radius: 20px;
+        }
+        input {
+            background: #000; border: 1px solid #00ffcc; color: #00ffcc;
+            padding: 15px; font-size: 22px; font-family: inherit; text-align: center;
+            width: 320px; margin-top: 25px; outline: none; text-transform: uppercase;
+        }
+        .btn-systec {
+            margin-top: 35px; padding: 15px 45px; background: #00ffcc; color: #000;
+            border: none; font-weight: bold; cursor: pointer; font-size: 20px;
+            clip-path: polygon(10% 0%, 100% 0%, 90% 100%, 0% 100%);
+            transition: 0.3s;
+        }
+        #ui-top { 
+            position: absolute; top: 20px; left: 20px; z-index: 10; 
+            background: rgba(0,10,20,0.85); color: #00ffcc; padding: 18px; 
+            border: 2px solid #00ffcc; border-radius: 10px; display: none;
+        }
+        .controles-movil {
+            position: absolute; bottom: 20px; width: 100%;
+            display: none; justify-content: space-between; padding: 0 30px;
+            box-sizing: border-box; z-index: 1000; pointer-events: none;
+        }
+        .d-pad { display: grid; grid-template-columns: repeat(3, 55px); gap: 5px; pointer-events: auto; }
+        .d-btn, .btn-salto {
+            width: 55px; height: 55px; background: rgba(0, 255, 204, 0.2);
+            border: 2px solid #00ffcc; color: #00ffcc; display: flex;
+            align-items: center; justify-content: center; border-radius: 10px;
+            font-weight: bold; user-select: none;
+        }
+        .btn-salto { width: 100px; height: 80px; font-size: 14px; pointer-events: auto; }
+    </style>
+
+    <script>
+        let nombrePiloto = "";
+        let juegoIniciado = false;
+
+        function iniciarMision() {
+            const input = document.querySelector('#input-nombre');
+            if (input.value.trim() === "") { alert("IDENTIFICACIÓN REQUERIDA"); return; }
+            nombrePiloto = input.value.toUpperCase();
+            document.querySelector('#user-display').innerText = nombrePiloto;
+            document.querySelector('#pantalla-registro').style.display = "none";
+            document.querySelector('#ui-top').style.display = "block";
+            if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+                document.querySelector('.controles-movil').style.display = "flex";
+            }
+            setTimeout(() => { juegoIniciado = true; }, 200);
+        }
+
+        AFRAME.registerComponent('motor-gameplay', {
+            init: function () {
+                this.puntos = 0;
+                this.puedeSaltar = true;
+                this.vidas = 3; 
+                this.keys = {};
+                this.actualizarUI();
+                window.addEventListener('keydown', (e) => { this.keys[e.code] = true; });
+                window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
+                
+                this.el.addEventListener('collide', (e) => {
+                    const target = e.detail.body.el;
+                    if (!target || !juegoIniciado) return;
+                    if (target.classList.contains('suelo')) { this.puntos += 10; this.actualizarUI(); }
+                    if (target.id === 'lava') { this.perderVida(); }
+                    if (target.id === 'meta') { this.finalizarJuego("¡NIVEL COMPLETADO!"); }
+                });
+            },
+            perderVida: function() {
+                this.vidas--; 
+                this.actualizarUI();
+                if (this.vidas <= 0) {
+                    this.finalizarJuego("GAME OVER");
+                } else { 
+                    this.el.body.position.set(0, 3, 0); 
+                    this.el.body.velocity.set(0, 0, 0); 
+                }
+            },
+            actualizarUI: function() {
+                document.querySelector('#puntos-val').innerText = this.puntos;
+                document.querySelector('#vidas-val').innerText = "❤️".repeat(this.vidas);
+            },
+            finalizarJuego: function(titulo) {
+                juegoIniciado = false;
+                document.querySelector('#game-over-screen').style.display = "flex";
+                document.querySelector('#final-title').innerText = titulo;
+                document.querySelector('#final-score').innerText = `PUNTUACIÓN: ${this.puntos}`;
+            },
+            tick: function () {
+                if (!this.el.body || !juegoIniciado) return;
+                this.el.body.quaternion.set(0, 0, 0, 1); // Evita que el personaje se caiga de lado
+                let v = this.el.body.velocity;
+                let f = 7;
+                if (this.keys['KeyW']) v.z = -f; else if (this.keys['KeyS']) v.z = f; else v.z = 0;
+                if (this.keys['KeyA']) v.x = -f; else if (this.keys['KeyD']) v.x = f; else v.x = 0;
+                if (this.keys['Space'] && Math.abs(v.y) < 0.1 && this.puedeSaltar) {
+                    v.y = 12; this.puedeSaltar = false;
+                } else if (!this.keys['Space']) { this.puedeSaltar = true; }
+            }
+        });
+
+        AFRAME.registerComponent('seguimiento-camara', {
+            init: function () { this.objetivo = document.querySelector('#jugador'); },
+            tick: function () {
+                if (!this.objetivo || !juegoIniciado) return;
+                let pos = this.objetivo.object3D.position;
+                this.el.object3D.position.lerp(new THREE.Vector3(pos.x, pos.y + 5, pos.z + 12), 0.1);
+            }
+        });
+    </script>
+</head>
+<body>
+
+    <div id="pantalla-registro" class="overlay">
+        <div class="terminal-box">
+            <h1>SYSTEC CORE V2</h1>
+            <input type="text" id="input-nombre" placeholder="ID PILOTO">
+            <br>
+            <button class="btn-systec" onclick="iniciarMision()">INICIAR SISTEMA</button>
+        </div>
+    </div>
+
+    <div id="ui-top">
+        ID: <span id="user-display">---</span> | PTS: <span id="puntos-val">0</span><br>
+        <div id="vidas-val">❤️❤️❤️</div>
+    </div>
+
+    <div id="game-over-screen" class="overlay" style="display: none;">
+        <div class="terminal-box">
+            <h1 id="final-title">MISIÓN FALLIDA</h1>
+            <p id="final-score"></p>
+            <button class="btn-systec" onclick="location.reload()">REINICIAR</button>
+        </div>
+    </div>
+
+    <a-scene physics="gravity: -18; debug: false">
+        <a-assets>
+            <img id="textura-lava" src="https://i.imgur.com/mY7999S.png">
+        </a-assets>
+
+        <a-plane id="lava" static-body position="0 -6 0" rotation="-90 0 0" width="1000" height="1000" material="color: #ff4500; emissive: #ff4500;"></a-plane>
+        <a-sky color="#050510"></a-sky>
+        <a-stars radius="100" count="5000"></a-stars>
+
+        <a-box class="suelo" static-body position="0 0 0" width="8" height="0.3" depth="8" color="#222"></a-box>
+        
+        <a-box class="suelo" static-body position="0 2 -10" width="4" height="0.3" depth="4" color="#00ffcc"></a-box>
+        <a-box class="suelo" static-body position="6 4 -15" width="3" height="0.3" depth="3" color="#00ffcc"></a-box>
+        <a-box class="suelo" static-body position="0 6 -20" width="3" height="0.3" depth="3" color="#00ffcc"></a-box>
+        <a-box class="suelo" static-body position="-6 8 -25" width="3" height="0.3" depth="3" color="#00ffcc"></a-box>
+
+        <a-box class="suelo" static-body position="0 10 -35" width="10" height="0.3" depth="5" color="#444"></a-box>
+        <a-box class="suelo" static-body position="0 12 -45" width="1.5" height="0.3" depth="1.5" color="#ff00ff"></a-box>
+        <a-box class="suelo" static-body position="4 14 -50" width="1.5" height="0.3" depth="1.5" color="#ff00ff"></a-box>
+        <a-box class="suelo" static-body position="-4 16 -55" width="1.5" height="0.3" depth="1.5" color="#ff00ff"></a-box>
+
+        <a-box class="suelo" static-body position="0 18 -65" width="6" height="0.3" depth="6" color="#00ffcc"></a-box>
+        
+        <a-entity id="meta" static-body position="0 20 -85">
+            <a-box width="10" height="0.5" depth="10" color="#00ffff" material="emissive: #00ffff; emissiveIntensity: 2"></a-box>
+            <a-text value="CORE ALCANZADO" align="center" position="0 3 0" scale="5 5 5"></a-text>
+        </a-entity>
+
+        <a-entity id="jugador" position="0 3 0" rotation="0 180 0" motor-gameplay dynamic-body="mass: 2; fixedRotation: true">
+            <a-entity id="cabeza" position="0 1.1 0">
+                <a-box width="0.4" height="0.4" depth="0.4" color="#B58562"></a-box>
+                <a-box position="0 0.2 0" width="0.42" height="0.1" depth="0.42" color="#332115"></a-box> <a-plane position="0 0 0.201" width="0.3" height="0.1" color="#332115"></a-plane> </a-entity>
+            <a-entity id="cuerpo" position="0 0.6 0">
+                <a-box width="0.4" height="0.6" depth="0.2" color="#00AFA6"></a-box>
+            </a-entity>
+            <a-box id="brazo-izq" position="-0.3 0.6 0" width="0.2" height="0.6" depth="0.2" color="#B58562"></a-box>
+            <a-box id="brazo-der" position="0.3 0.6 0" width="0.2" height="0.6" depth="0.2" color="#B58562"></a-box>
+            <a-box id="pierna-izq" position="-0.1 0.1 0" width="0.2" height="0.6" depth="0.2" color="#4849A1"></a-box>
+            <a-box id="pierna-der" position="0.1 0.1 0" width="0.2" height="0.6" depth="0.2" color="#4849A1"></a-box>
+        </a-entity>
+
+        <a-entity id="rig-camara" seguimiento-camara>
+            <a-camera look-controls="enabled: false" wasd-controls="enabled: false"></a-camera>
+        </a-entity>
+
+        <a-light type="ambient" intensity="0.6"></a-light>
+        <a-light type="point" position="0 10 -20" intensity="0.8" color="#00ffcc"></a-light>
+    </a-scene>
+</body>
+</html>
